@@ -24,7 +24,7 @@ import * as redisStore from 'cache-manager-redis-store';
         };
       },
     }),
-
+    // CacheModule.register(),
     CacheModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

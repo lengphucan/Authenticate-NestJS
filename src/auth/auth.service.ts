@@ -11,7 +11,9 @@ import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
 import { SignUpDto } from './dto/signup.dto';
 import { MailerService } from '@nestjs-modules/mailer';
-import { CACHE_MANAGER, Cache } from 'cache-manager';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Cache } from 'cache-manager';
+import * as jwt from 'jsonwebtoken';
 
 @Injectable()
 export class AuthService {
@@ -20,7 +22,8 @@ export class AuthService {
     private UserModel: Model<User>,
     private jwtService: JwtService,
     private mailerService: MailerService,
-    @Inject(CACHE_MANAGER) private cacheManage: Cache,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    // @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
 
   async signUp(
@@ -51,7 +54,7 @@ export class AuthService {
     };
   }
 
-  async login(User: SignUpDto): Promise<{ token: string }> {
+  async login(User: SignUpDto): Promise<{ ticket: string }> {
     const { email, password } = User;
     const user = await this.UserModel.findOne({ email });
     if (!user) {
@@ -62,29 +65,51 @@ export class AuthService {
       throw new BadRequestException('Password incorrect');
     }
 
-    const payload = { email: user.email, sub: user._id };
+    const payload = { email: user.email, id: user._id };
     const token = this.jwtService.sign(payload);
 
     const ticket = generateTicket(user);
+    await this.cacheManager.set('ticket', ticket, {
+      ttl: process.env.TICKET_EXPIRE,
+    });
 
-    console.log(ticket);
+    // const value = await this.cacheManager.get('ticket');
+    // console.log('value', value);
+
+    console.log('ticket', ticket);
     // await this.mailerService.sendMail({
-    //   from: 'anlenguyen0110@gmail.com',
+    //   from: process.env.MAIL_USER,
     //   to: email,
     //   subject: 'demo email',
     //   template: './confirmation',
     //   context: {
     //     // ✏️ filling curly brackets with content
     //     name: user.name,
-    //     url: `example.com/auth/confirm?token=${token}`,
+    //     url: `example.com/auth/confirm?token=${ticket}`,
     //   },
     // });
     return {
-      token: token,
+      ticket: ticket,
     };
   }
-  async resendEmail(ticket: string): Promise<{ message: string }> {
-    return { message: '' };
+  async resendEmail(user, ticket: string): Promise<{ new_ticket: string }> {
+    const old_ticket = await this.cacheManager.get('ticket');
+    console.log('old', old_ticket);
+    console.log('ticket', ticket);
+    if (old_ticket != ticket) throw new BadRequestException('invalid ticket');
+    const new_ticket = generateTicket(user);
+
+    await this.mailerService.sendMail({
+      from: process.env.MAIL_USER,
+      to: user.email,
+      subject: 'Resend email',
+      template: './confirmation',
+      context: {
+        name: user.name,
+        url: `example.com/auth/confirm?token=${ticket}`,
+      },
+    });
+    return { new_ticket: new_ticket };
   }
 
   async logout(token: string): Promise<{ message: string }> {
@@ -121,4 +146,17 @@ function getRandomString(length) {
     result += characters.charAt(Math.floor(Math.random() * charactersLength));
   }
   return result;
+}
+
+export function decodeToken(token: string): any {
+  try {
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET,
+    );
+    return decoded;
+  } catch (err) {
+    console.error(err);
+    throw new Error('Invalid token');
+  }
 }

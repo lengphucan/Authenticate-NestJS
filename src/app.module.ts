@@ -5,8 +5,9 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { AppService } from './app.service';
 import { BookModule } from './book/book.module';
-import { AuthModule } from './auth/auth.module';
 import { EmailModule } from './email/email.module';
+import { RedisModule } from '@nestjs-modules/ioredis';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -15,7 +16,6 @@ import { EmailModule } from './email/email.module';
       isGlobal: true,
     }),
     MongooseModule.forRoot(process.env.DB_URI),
-
     BookModule,
     AuthModule,
     EmailModule,
